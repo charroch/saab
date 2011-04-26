@@ -1,0 +1,10 @@
+target/
+lib_managed/
+src_managed/
+project/boot/
+.class
+.scala_dependencies
+.redcar
+.history
+.classpath
+.project
