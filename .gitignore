@@ -2,9 +2,12 @@ target/
 lib_managed/
 src_managed/
 project/boot/
+<<<<<<< HEAD
 .class
 .scala_dependencies
 .redcar
+=======
+>>>>>>> origin/master
 .history
 .classpath
 .project
