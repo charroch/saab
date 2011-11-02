@@ -5,3 +5,5 @@ project/boot/
 .history
 .classpath
 .project
+.idea/
+.idea_modules/

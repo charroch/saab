@@ -16,6 +16,7 @@ object Plugin extends sbt.Plugin {
     val Android = config("android")
 
     val androidHome = SettingKey[String]("android-home", "Android SDK home path - will check ANDROID_HOME system variable")
+    val key = SettingKey[File]("android", "Something something dark side")
 
     object project {
       // Global project tasks
@@ -56,7 +57,7 @@ object Plugin extends sbt.Plugin {
       val dx = TaskKey[Seq[File]]("gen-r", "Generate R file")
       val aidl = TaskKey[Seq[File]]("gen-aidl", "Generate interface against AIDL file")
 
-      private[android] def aaptGenerateTask =
+      def aaptGenerateTask =
         (
           android.project.packageName in androidHome,
           android.sdk.aapt in Android,
@@ -97,6 +98,8 @@ object Plugin extends sbt.Plugin {
     //compile in c ~= _ dependsOn android.task.dx,
     //packageApk in debug in c <<= jarsigner dependsOn apkbuilder,
     //packageApk in market in c <<= zipalign dependsOn jarsigner
+
+    android.task.dx in android.key in c <<= android.task.aaptGenerateTask,
     name in c := "helloWorld"
   ))
 
