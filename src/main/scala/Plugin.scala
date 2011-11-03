@@ -16,9 +16,10 @@ object Plugin extends sbt.Plugin {
     val Android = config("android")
 
     val androidHome = SettingKey[String]("android-home", "Android SDK home path - will check ANDROID_HOME system variable")
-    val key = SettingKey[File]("android", "Something something dark side")
+    val key = SettingKey[Unit]("android", "Project type, can be normal android project, test or library")
 
     object project {
+
       // Global project tasks
       val packageApk = TaskKey[File]("package-apk", "Package the project into an APK")
       val debug = SettingKey[Certificate]("debug", "Certificate for debug signing")
@@ -94,16 +95,31 @@ object Plugin extends sbt.Plugin {
 
   }
 
-  def androidSettingsIn(c: Configuration): Seq[Setting[_]] = inConfig(c)(Seq(
-    //compile in c ~= _ dependsOn android.task.dx,
-    //packageApk in debug in c <<= jarsigner dependsOn apkbuilder,
-    //packageApk in market in c <<= zipalign dependsOn jarsigner
+  def androidSettingsIn(c: Configuration): Seq[Setting[_]] = inConfig(c)(
+    Defaults.settings ++ android.sdk.settings ++
+      Seq(
+        //compile in c ~= _ dependsOn android.task.dx,
+        //packageApk in debug in c <<= jarsigner dependsOn apkbuilder,
+        //packageApk in market in c <<= zipalign dependsOn jarsigner
 
-    android.task.dx in android.key in c <<= android.task.aaptGenerateTask,
-    name in c := "helloWorld"
-  ))
+        android.task.dx in android.key in c <<= android.task.aaptGenerateTask,
+        name in c := "helloWorld"
+      ))
 
   lazy val defaultSettings: Seq[Setting[_]] = androidSettingsIn(Compile)
+
+  // Some defaults values common in most project
+  object Defaults {
+    lazy val settings: Seq[Setting[_]] = Seq(
+      android.project.manifest <<= sourceDirectory(_ / "AndroidManifest.xml"),
+      android.project.res <<= sourceDirectory(_ / "res"),
+      android.project.assets <<= sourceDirectory(_ / "assets"),
+      android.project.packageName <<= android.project.manifest(AndroidManifest(_).pkg),
+
+      android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-14/android.jar")
+    )
+  }
+
 }
 
 
