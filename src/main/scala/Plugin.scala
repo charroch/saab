@@ -43,6 +43,7 @@ object Plugin extends sbt.Plugin {
       val installedAddons = SettingKey[Map[String, ModuleID]]("addons", "Installed addons")
       val jars = SettingKey[Map[String, ModuleID]]("jars", "Installed android jars")
 
+
       lazy val settings: Seq[Setting[_]] = inConfig(Android)(Seq(
         android.sdk.root := file(System.getenv("ANDROID_HOME")),
         android.sdk.dx <<= android.sdk.root(_ / "platform-tools" / "dx"),
@@ -55,25 +56,13 @@ object Plugin extends sbt.Plugin {
 
     object task {
 
-      val dx = TaskKey[Seq[File]]("gen-r", "Generate R file")
+      val aapt = TaskKey[Seq[File]]("gen-r", "Generate R file")
       val aidl = TaskKey[Seq[File]]("gen-aidl", "Generate interface against AIDL file")
+      val dx = TaskKey[File]("gen-dx", "Dexing classes into dx")
 
-      def aaptGenerateTask =
-        (
-          android.project.packageName in androidHome,
-          android.sdk.aapt in Android,
-          android.project.manifest in androidHome,
-          android.project.res in androidHome,
-          android.project.androidJar in androidHome,
-          sourceManaged in androidHome,
-          streams
-          ) map {
-
-          (mPackage, aPath, mPath, resPath, jPath, javaPath, log) =>
-            generateRFile(mPackage, aPath, mPath, resPath, jPath, javaPath, log.log)
-        }
-
-      private[android] def generateRFile(pkg: String, aapt: File, manifest: File, resFolder: File, androidJar: File, outFolder: File, out: Logger): Seq[File] = {
+      def generateRFile(pkg: String, aapt: File, manifest: File, resFolder: File, androidJar: File, outFolder: File, log: Logger): Seq[File] = {
+        val out = outFolder / "java"
+        if (!out.exists()) out.mkdirs()
         val process = Process(
           <x>
             {aapt.absolutePath}
@@ -86,10 +75,54 @@ object Plugin extends sbt.Plugin {
             -I
             {androidJar.absolutePath}
             -J
-            {outFolder.absolutePath}
-          </x>)
-        if (process ! out == 1) sys.error("Can not generate R file for command %s" format process.toString)
-        outFolder ** "R.java" get
+            {out.absolutePath}
+          </x>
+        )
+        if (process ! log == 1) sys.error("Can not generate R file for command %s" format process.toString)
+        out ** "R.java" get
+      }
+
+      def generateAIDLFile(sources: Seq[File], aidlExecutable: File, outFolder: File, javaSourceFolder: File, out: Logger): Seq[File] = {
+        val outF = outFolder / "java"
+        if (!outF.exists()) outF.mkdirs()
+        val aidlPaths = sources.map(_ ** "*.aidl").reduceLeft(_ +++ _).get
+        if (aidlPaths.isEmpty) {
+          out.debug("no AIDL files found, skipping")
+          Nil
+        } else {
+          val processor = aidlPaths.map {
+            ap =>
+              aidlExecutable.absolutePath ::
+                "-o" + outF.absolutePath ::
+                "-I" + javaSourceFolder.absolutePath ::
+                ap.absolutePath :: Nil
+          }.foldLeft(None.asInstanceOf[Option[ProcessBuilder]]) {
+            (f, s) =>
+              f match {
+                case None => Some(s)
+                case Some(first) => Some(first #&& s)
+              }
+          }.get
+          out.debug("generating aidl " + processor)
+          processor !
+
+          val rPath = outF ** "R.java"
+          outF ** "*.java" --- (rPath) get
+        }
+      }
+
+      def dxTask(scalaInstance: ScalaInstance, dxPath: File, classDirectory: File, classesDexPath: File, l: Logger): File = {
+        val inputs = classDirectory --- scalaInstance.libraryJar get
+        val uptodate = classesDexPath.exists &&
+          !inputs.exists(_.lastModified > classesDexPath.lastModified)
+        if (!uptodate) {
+          val dxCmd = String.format("%s  --dex --output=%s %s", dxPath, classesDexPath / "classes.dex", inputs.mkString(" "))
+          l.debug(dxCmd)
+          l.info("Dexing " + classesDexPath)
+          l.debug(dxCmd !!)
+        } else l.debug("dex file uptodate, skipping")
+
+        classesDexPath
       }
     }
 
@@ -98,12 +131,31 @@ object Plugin extends sbt.Plugin {
   def androidSettingsIn(c: Configuration): Seq[Setting[_]] = inConfig(c)(
     Defaults.settings ++ android.sdk.settings ++
       Seq(
-        //compile in c ~= _ dependsOn android.task.dx,
-        //packageApk in debug in c <<= jarsigner dependsOn apkbuilder,
-        //packageApk in market in c <<= zipalign dependsOn jarsigner
 
-        android.task.dx in android.key in c <<= android.task.aaptGenerateTask,
-        name in c := "helloWorld"
+        unmanagedJars in c <+= android.project.androidJar map {
+          p =>
+            p
+        },
+
+        android.task.aapt in android.key in c <<= (android.project.packageName in android.androidHome, android.sdk.aapt in android.Android,
+          android.project.manifest in android.androidHome, android.project.res in android.androidHome, android.project.androidJar in android.androidHome, sourceManaged in android.androidHome, streams) map {
+          (mPackage, aPath, mPath, resPath, jPath, javaPath, log) =>
+            android.task.generateRFile(mPackage, aPath, mPath, resPath, jPath, javaPath, log.log)
+        },
+
+        android.task.aidl in android.key in c <<= (sourceDirectories, android.sdk.aidl in android.Android, sourceManaged in android.androidHome, javaSource, streams) map {
+          (sDirs, idPath, javaPath, jSource, s) =>
+            android.task.generateAIDLFile(sDirs, idPath, javaPath, jSource, s.log)
+        },
+
+        android.task.dx in android.key in c <<= (scalaInstance, android.sdk.dx in android.Android, classDirectory, target, streams) map {
+          (scalaInstance, dxPath, classDirectory, classesDexPath, s) =>
+            android.task.dxTask(scalaInstance, dxPath, classDirectory, classesDexPath, s.log)
+        },
+
+        sourceGenerators in c <+= (android.task.aapt in android.key in c).task,
+        sourceGenerators in c <+= (android.task.aidl in android.key in c).task,
+
       ))
 
   lazy val defaultSettings: Seq[Setting[_]] = androidSettingsIn(Compile)
@@ -115,7 +167,6 @@ object Plugin extends sbt.Plugin {
       android.project.res <<= sourceDirectory(_ / "res"),
       android.project.assets <<= sourceDirectory(_ / "assets"),
       android.project.packageName <<= android.project.manifest(AndroidManifest(_).pkg),
-
       android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-14/android.jar")
     )
   }

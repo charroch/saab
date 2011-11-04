@@ -1,11 +1,21 @@
 # should generate R file
 > gen-r(for android)
-$ exists target/src_managed/main/java/org/scalatools/sbt/R.java
+$ exists target/scala-2.9.1/src_managed/main/java/org/scalatools/sbt/R.java
+
+# should generate AIDL file
+> gen-aidl(for android)
+$ exists target/scala-2.9.1/src_managed/main/java/org/sbt/android/IAdditionService.java
 
 # should compile
 > compile
 $ exists target/scala-2.9.1/classes/org/scalatools/sbt/R.class
 $ exists target/scala-2.9.1/classes/org/sbt/android/MainActivity.class
+$ exists target/scala-2.9.1/classes/org/sbt/android/IAdditionService.class
+
+# should generate AIDL file
+> gen-dx(for android)
+$ exists target/classes.dex
+
 
 # should clean correctly
 > clean
