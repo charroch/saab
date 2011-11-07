@@ -1,5 +1,7 @@
 package saab
 
+import com.android.sdklib.build.ApkBuilder
+
 object Plugin extends sbt.Plugin {
 
   import sbt._
@@ -12,6 +14,7 @@ object Plugin extends sbt.Plugin {
     type Certificate = (File, Alias, Password)
     type Directory = File
     type Executable = File
+    type Jar = File
 
     val Android = config("android")
 
@@ -32,6 +35,9 @@ object Plugin extends sbt.Plugin {
       val assets = SettingKey[Directory]("assets", "The asset directory for layout/drawable/string/xml values")
       val androidJar = SettingKey[File]("android-jar", "The android.jar used for this project")
       val packageName = SettingKey[String]("package-name", "The package name as described in the Android Manifest")
+
+      // hidden
+      val resApk = SettingKey[File]("res-apk", "The res packaged apk name")
     }
 
     object sdk {
@@ -57,8 +63,28 @@ object Plugin extends sbt.Plugin {
     object task {
 
       val aapt = TaskKey[Seq[File]]("gen-r", "Generate R file")
+      val resApk = TaskKey[File]("gen-res-apk", "Generate R file")
       val aidl = TaskKey[Seq[File]]("gen-aidl", "Generate interface against AIDL file")
       val dx = TaskKey[File]("gen-dx", "Dexing classes into dx")
+
+      def aaptPackageTask(aapt: Executable, manifest: File, res: Directory, assets: Directory, android: Jar, outApk: File): File = {
+        Process(<x>
+          {aapt}
+          package --auto-add-overlay -f
+          -M
+          {manifest}
+          -S
+          {res}
+          -A
+          {assets}
+          -I
+          {android}
+          -F
+          {outApk}
+        </x>).!
+
+        outApk
+      }
 
       def generateRFile(pkg: String, aapt: File, manifest: File, resFolder: File, androidJar: File, outFolder: File, log: Logger): Seq[File] = {
         val out = outFolder / "java"
@@ -124,6 +150,11 @@ object Plugin extends sbt.Plugin {
 
         classesDexPath
       }
+
+      def apkBuilder(outApkFile: File, res: File, dex: File): File = {
+        val f = new ApkBuilder(outApkFile, res, dex, null, null)
+        file("/tmp")
+      }
     }
 
   }
@@ -153,10 +184,24 @@ object Plugin extends sbt.Plugin {
             android.task.dxTask(scalaInstance, dxPath, classDirectory, classesDexPath, s.log)
         },
 
-        sourceGenerators in c <+= (android.task.aapt in android.key in c).task,
-        sourceGenerators in c <+= (android.task.aidl in android.key in c).task,
+        android.task.resApk in android.key in c <<=
+          (android.sdk.aapt in android.Android, android.project.manifest in android.androidHome, android.project.res in android.androidHome,
+            android.project.assets in android.androidHome, android.project.androidJar in android.androidHome, android.project.resApk in android.androidHome) map {
+            (apPath, manPath, rPath, assetPath, jPath, resApkPath) =>
+              android.task.aaptPackageTask(apPath, manPath, rPath, assetPath, jPath, resApkPath)
+          },
+        //
+        //        android.project.packageApk in android.key in c <<= (scalaInstance) map {
+        //          (s) =>
+        //            android.task.apkBuilder()
+        //        },
 
-      ))
+        sourceGenerators in c <+= (android.task.aapt in android.key in c).task,
+        sourceGenerators in c <+= (android.task.aidl in android.key in c).task
+
+      )
+
+  )
 
   lazy val defaultSettings: Seq[Setting[_]] = androidSettingsIn(Compile)
 
@@ -166,6 +211,7 @@ object Plugin extends sbt.Plugin {
       android.project.manifest <<= sourceDirectory(_ / "AndroidManifest.xml"),
       android.project.res <<= sourceDirectory(_ / "res"),
       android.project.assets <<= sourceDirectory(_ / "assets"),
+      android.project.resApk <<= target(_ / "resources.apk"),
       android.project.packageName <<= android.project.manifest(AndroidManifest(_).pkg),
       android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-14/android.jar")
     )
