@@ -38,6 +38,7 @@ object Plugin extends sbt.Plugin {
 
       // hidden
       val resApk = SettingKey[File]("res-apk", "The res packaged apk name")
+      val apk = SettingKey[File]("apk", "The res packaged apk name")
     }
 
     object sdk {
@@ -190,11 +191,12 @@ object Plugin extends sbt.Plugin {
             (apPath, manPath, rPath, assetPath, jPath, resApkPath) =>
               android.task.aaptPackageTask(apPath, manPath, rPath, assetPath, jPath, resApkPath)
           },
-        //
-        //        android.project.packageApk in android.key in c <<= (scalaInstance) map {
-        //          (s) =>
-        //            android.task.apkBuilder()
-        //        },
+
+        android.project.packageApk in android.key in c <<=
+          (android.project.apk in android.key, android.task.resApk in android.key, android.task.dx in android.key) map {
+            (outApkFile, res, dex) =>
+              android.task.apkBuilder(outApkFile, res, dex)
+          },
 
         sourceGenerators in c <+= (android.task.aapt in android.key in c).task,
         sourceGenerators in c <+= (android.task.aidl in android.key in c).task
@@ -212,6 +214,7 @@ object Plugin extends sbt.Plugin {
       android.project.res <<= sourceDirectory(_ / "res"),
       android.project.assets <<= sourceDirectory(_ / "assets"),
       android.project.resApk <<= target(_ / "resources.apk"),
+      android.project.apk <<= target(_ / "out.apk"),
       android.project.packageName <<= android.project.manifest(AndroidManifest(_).pkg),
       android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-14/android.jar")
     )
