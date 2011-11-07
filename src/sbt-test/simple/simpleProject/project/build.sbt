@@ -1,3 +1,3 @@
-addSbtPlugin("com.novoda" % "saab" % "0.1.0-SNAPSHOT")
+addSbtPlugin("com.novoda" % "saab" % "0.1.1-SNAPSHOT")
 
 libraryDependencies <+= sbtVersion(v => "com.github.siasia" %% "xsbt-proguard-plugin" % (v+"-0.1.1"))

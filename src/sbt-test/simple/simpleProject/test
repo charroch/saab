@@ -20,6 +20,11 @@ $ exists target/scala-2.9.1/classes/org/sbt/android/IAdditionService.class
 > gen-dx(for android)
 $ exists target/classes.dex
 
+# should package into an APK
+$ pause
+> gen-dx(for android)
+> package-apk(for android)
+$ exists target/out.apk
 
 # should clean correctly
 > clean
@@ -29,8 +34,4 @@ $ delete target/src_managed/main/java/org/scalatools/sbt/R.java
 # without robolectric it should fail
 -> test
 
-# should package into an APK
-$ pause
-> package-apk(for android)
-$ exists target/out.apk
 

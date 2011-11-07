@@ -2,7 +2,7 @@ organization := "com.novoda"
 
 name := "saab"
 
-version := "0.1.0-SNAPSHOT"
+version := "0.1.1-SNAPSHOT"
 
 scalacOptions += "-deprecation"
 
@@ -15,6 +15,7 @@ credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 
 libraryDependencies ++= Seq(
   "com.google.android.tools" % "ddmlib" % "r13",
+  "com.android" % "sdklib" % "r4"  from "http://dl.dropbox.com/u/615212/jars/sdklib.jar",
   "org.specs2" %% "specs2" % "1.6.1" % "test"
 )
 

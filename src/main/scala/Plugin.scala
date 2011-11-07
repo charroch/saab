@@ -149,12 +149,14 @@ object Plugin extends sbt.Plugin {
           l.debug(dxCmd !!)
         } else l.debug("dex file uptodate, skipping")
 
-        classesDexPath
+        classesDexPath / "classes.dex"
       }
 
       def apkBuilder(outApkFile: File, res: File, dex: File): File = {
         val f = new ApkBuilder(outApkFile, res, dex, null, null)
-        file("/tmp")
+        f.setDebugMode(true)
+        f.sealApk()
+        outApkFile
       }
     }
 
@@ -193,11 +195,13 @@ object Plugin extends sbt.Plugin {
           },
 
         android.project.packageApk in android.key in c <<=
-          (android.project.apk in android.key, android.task.resApk in android.key, android.task.dx in android.key) map {
-            (outApkFile, res, dex) =>
+          (android.project.apk in android.androidHome, android.task.resApk in android.key, android.task.dx in android.key in c, streams) map {
+            (outApkFile, res, dex, log) =>
+              log.log.info("Packaging APK in debug mode, " + outApkFile + " res " + res + " dex " + dex)
               android.task.apkBuilder(outApkFile, res, dex)
           },
 
+        android.project.packageApk in android.key in c <<= android.project.packageApk in android.key in c dependsOn (android.task.dx in android.key in c),
         sourceGenerators in c <+= (android.task.aapt in android.key in c).task,
         sourceGenerators in c <+= (android.task.aidl in android.key in c).task
 
