@@ -1,6 +1,7 @@
 package saab
 
 import com.android.sdklib.build.ApkBuilder
+import sbt.complete.Parser
 
 object Plugin extends sbt.Plugin {
 
@@ -21,12 +22,15 @@ object Plugin extends sbt.Plugin {
     val androidHome = SettingKey[String]("android-home", "Android SDK home path - will check ANDROID_HOME system variable")
     val key = SettingKey[Unit]("android", "Project type, can be normal android project, test or library")
 
+    object release {
+      val debug = SettingKey[Certificate]("debug", "Certificate for debug signing")
+      val market = SettingKey[Certificate]("market", "Certificate for market signing")
+    }
+
     object project {
 
       // Global project tasks
       val packageApk = TaskKey[File]("package-apk", "Package the project into an APK")
-      val debug = SettingKey[Certificate]("debug", "Certificate for debug signing")
-      val market = SettingKey[Certificate]("market", "Certificate for market signing")
       val install = TaskKey[Unit]("install", "Install the APK onto a device or emulator")
 
       // project of type android specific settings
@@ -152,7 +156,44 @@ object Plugin extends sbt.Plugin {
         classesDexPath / "classes.dex"
       }
 
-      def apkBuilder(outApkFile: File, res: File, dex: File): File = {
+      def apkBuilder(outApkFile: File, res: File, dex: File)(implicit c: Certificate): File = {
+        import java.security._
+        val (path, (alias, aliasPassword), certPassword) = c
+        val inStream = new java.io.FileInputStream(path)
+        val cf = java.security.cert.CertificateFactory.getInstance("X.509")
+        val cert = cf.generateCertificate(inStream)
+        inStream.close();
+
+
+        val ks = KeyStore.getInstance(KeyStore.getDefaultType());
+
+        // get user password and file input stream
+        val password = certPassword.toCharArray;
+        ks.load(inStream, password);
+        //
+        //        // get my private key
+        //        val pkEntry = (java.security.KeyStore.PrivateKeyEntry)
+        //        ks.getEntry("privateKeyAlias", password);
+        //        PrivateKey myPrivateKey = pkEntry.getPrivateKey();
+        //
+        //        // save my secret key
+        //        javax.crypto.SecretKey mySecretKey;
+        //        KeyStore.SecretKeyEntry skEntry =
+        //          new KeyStore.SecretKeyEntry(mySecretKey);
+        //        ks.setEntry("secretKeyAlias", skEntry,
+        //          new KeyStore.PasswordProtection(password));
+        //
+        //        // store away the keystore
+        //        java.io.FileOutputStream fos = null;
+        //        try {
+        //          fos = new java.io.FileOutputStream("newKeyStoreName");
+        //          ks.store(fos, password);
+        //        } finally {
+        //          if (fos != null) {
+        //            fos.close();
+        //          }
+        //        }
+
         val f = new ApkBuilder(outApkFile, res, dex, null, null)
         f.setDebugMode(true)
         f.sealApk()
@@ -194,14 +235,13 @@ object Plugin extends sbt.Plugin {
               android.task.aaptPackageTask(apPath, manPath, rPath, assetPath, jPath, resApkPath)
           },
 
-        android.project.packageApk in android.key in c <<=
-          (android.project.apk in android.androidHome, android.task.resApk in android.key, android.task.dx in android.key in c, streams) map {
-            (outApkFile, res, dex, log) =>
-              log.log.info("Packaging APK in debug mode, " + outApkFile + " res " + res + " dex " + dex)
-              android.task.apkBuilder(outApkFile, res, dex)
+        android.project.packageApk in android.release.debug in c <<=
+          (android.project.apk in android.androidHome, android.task.resApk in android.key, android.task.dx in android.key in c, android.release.debug, streams) map {
+            (outApkFile, res, dex, ce, log) =>
+              android.task.apkBuilder(outApkFile, res, dex)(ce)
           },
 
-        android.project.packageApk in android.key in c <<= android.project.packageApk in android.key in c dependsOn (android.task.dx in android.key in c),
+        //android.project.packageApk in android.key in c <<= android.project.packageApk in android.key in c dependsOn (android.task.dx in android.key in c),
         sourceGenerators in c <+= (android.task.aapt in android.key in c).task,
         sourceGenerators in c <+= (android.task.aidl in android.key in c).task
 
@@ -220,8 +260,57 @@ object Plugin extends sbt.Plugin {
       android.project.resApk <<= target(_ / "resources.apk"),
       android.project.apk <<= target(_ / "out.apk"),
       android.project.packageName <<= android.project.manifest(AndroidManifest(_).pkg),
-      android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-14/android.jar")
+      android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-14/android.jar"),
+      android.release.debug :=(Path.userHome / ".android" / "debug.keystore", ("androiddebugkey", "android"), "android"),
+
+      demo <<= InputTask(parser)(taskDef)
     )
+
+    import complete.DefaultParsers._
+
+    import sbt._
+
+    val demo = InputKey[Unit]("demo")
+
+    val parser: sbt.Project.Initialize[State => Parser[(String, String)]] =
+      (scalaVersion, sbtVersion) {
+        (scalaV: String, sbtV: String) =>
+          (state: State) =>
+            (token(Space ~> "scala" <~ Space) ~ token(scalaV)) |
+              (token(Space ~> "sbt" <~ Space) ~ token(sbtV)) |
+              (token(Space ~> "commands" <~ Space) ~
+                token(state.remainingCommands.size.toString))
+      }
+
+    val taskDef = (parsedTask: TaskKey[(String, String)]) => {
+      // we are making a task, so use 'map'
+      (parsedTask, packageBin) map {
+        case ((tpe: String, value: String), pkg: File) =>
+          println("Type: " + tpe)
+          println("Value: " + value)
+          println("Packaged: " + pkg.getAbsolutePath)
+      }
+    }
+  }
+
+  object adb {
+    val globalSettings: Seq[Setting[_]] = Seq(
+      onLoad in Global <<= (onLoad in Global, streams) map {(o,s) => o andThen {
+        state =>
+        // load
+        //state.put()
+
+        s.log("HELO WPR")
+      }}),
+      onUnload in Global <<= onUnload in Global apply (_ andThen {
+        state =>
+        // load
+        //state.put()
+        state
+      })
+    )
+
+
   }
 
 }

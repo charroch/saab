@@ -23,7 +23,7 @@ $ exists target/classes.dex
 # should package into an APK
 $ pause
 > gen-dx(for android)
-> package-apk(for android)
+> package-apk(for debug)
 $ exists target/out.apk
 
 # should clean correctly
