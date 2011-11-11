@@ -11,5 +11,7 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "1.6.1" % "test"
 
 seq(defaultSettings : _*)
 
+seq(adb.globalSettings : _*)
+
 //platformName := "android-13"
 

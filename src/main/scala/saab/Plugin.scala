@@ -2,6 +2,7 @@ package saab
 
 import com.android.sdklib.build.ApkBuilder
 import sbt.complete.Parser
+import java.security.cert.X509Certificate
 
 object Plugin extends sbt.Plugin {
 
@@ -159,42 +160,18 @@ object Plugin extends sbt.Plugin {
       def apkBuilder(outApkFile: File, res: File, dex: File)(implicit c: Certificate): File = {
         import java.security._
         val (path, (alias, aliasPassword), certPassword) = c
-        val inStream = new java.io.FileInputStream(path)
-        val cf = java.security.cert.CertificateFactory.getInstance("X.509")
-        val cert = cf.generateCertificate(inStream)
-        inStream.close();
-
 
         val ks = KeyStore.getInstance(KeyStore.getDefaultType());
-
-        // get user password and file input stream
         val password = certPassword.toCharArray;
-        ks.load(inStream, password);
-        //
-        //        // get my private key
-        //        val pkEntry = (java.security.KeyStore.PrivateKeyEntry)
-        //        ks.getEntry("privateKeyAlias", password);
-        //        PrivateKey myPrivateKey = pkEntry.getPrivateKey();
-        //
-        //        // save my secret key
-        //        javax.crypto.SecretKey mySecretKey;
-        //        KeyStore.SecretKeyEntry skEntry =
-        //          new KeyStore.SecretKeyEntry(mySecretKey);
-        //        ks.setEntry("secretKeyAlias", skEntry,
-        //          new KeyStore.PasswordProtection(password));
-        //
-        //        // store away the keystore
-        //        java.io.FileOutputStream fos = null;
-        //        try {
-        //          fos = new java.io.FileOutputStream("newKeyStoreName");
-        //          ks.store(fos, password);
-        //        } finally {
-        //          if (fos != null) {
-        //            fos.close();
-        //          }
-        //        }
+        val fis = new java.io.FileInputStream(path);
+        ks.load(fis, password);
+        val cert = ks.getCertificate(alias);
+        fis.close();
 
-        val f = new ApkBuilder(outApkFile, res, dex, null, null)
+        val pkEntry = ks.getEntry(alias, new KeyStore.PasswordProtection(aliasPassword.toCharArray));
+        val privateKey = pkEntry.asInstanceOf[KeyStore.PrivateKeyEntry].getPrivateKey();
+
+        val f = new ApkBuilder(outApkFile, res, dex, privateKey.asInstanceOf[PrivateKey], cert.asInstanceOf[X509Certificate], scala.Console.out)
         f.setDebugMode(true)
         f.sealApk()
         outApkFile
@@ -272,15 +249,29 @@ object Plugin extends sbt.Plugin {
 
     val demo = InputKey[Unit]("demo")
 
+    val helloTask2 = TaskKey[Unit]("hello", "Prints 'Hello World'") := {
+      println("Hello World")
+    }
+
     val parser: sbt.Project.Initialize[State => Parser[(String, String)]] =
       (scalaVersion, sbtVersion) {
         (scalaV: String, sbtV: String) =>
           (state: State) =>
+
             (token(Space ~> "scala" <~ Space) ~ token(scalaV)) |
               (token(Space ~> "sbt" <~ Space) ~ token(sbtV)) |
               (token(Space ~> "commands" <~ Space) ~
                 token(state.remainingCommands.size.toString))
+
       }
+
+
+    import sbt.complete._
+
+//    val color: Parser[String] = {
+//      (Space ~> "something") | (Space ~> "esle")
+//      List("hello", "world").map((Space) ~> _).reduceLeft(Space)(_.1 | _ .2)
+//    }
 
     val taskDef = (parsedTask: TaskKey[(String, String)]) => {
       // we are making a task, so use 'map'
@@ -295,22 +286,16 @@ object Plugin extends sbt.Plugin {
 
   object adb {
     val globalSettings: Seq[Setting[_]] = Seq(
-      onLoad in Global <<= (onLoad in Global, streams) map {(o,s) => o andThen {
+      onLoad in Global <<= onLoad in Global apply (_ andThen {
         state =>
-        // load
-        //state.put()
-
-        s.log("HELO WPR")
-      }}),
+        //sys.error("HELO WPR")
+          state
+      }
+        ),
       onUnload in Global <<= onUnload in Global apply (_ andThen {
         state =>
-        // load
-        //state.put()
-        state
-      })
-    )
-
-
+          state
+      }))
   }
 
 }

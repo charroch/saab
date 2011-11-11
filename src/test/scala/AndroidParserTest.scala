@@ -9,11 +9,11 @@ class AndroidParserTest extends Specification {
   // install on HT*
   // install on all where ro.name.manufacturer is | startsWith | etc... "Sony Ericsson" and
 
-  // val task = TaskKey("blu") = on all {
-  //    install ...
-  //    run ...
+  // val task = TaskKey("blu") = on.all(
+  //    install ... ,
+  //    run ...     ,
   //    instrument ...
-  // }
+  // )
 
 
    // "on all" should apply on a Seq[IDevice] the PartialFunction
