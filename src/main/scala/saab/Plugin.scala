@@ -63,6 +63,7 @@ object Plugin extends sbt.Plugin {
         android.sdk.aidl <<= android.sdk.root(_ / "platform-tools" / "aidl")
         //  android.sdk.installedAddons := addons,
         //  android.sdk.jars := jars
+        // resolvers += Resolver.url("my-test-repo", url)( Patterns("[organisation]/[module]/[revision]/[artifact].[ext]") )
       ))
     }
 
@@ -73,22 +74,16 @@ object Plugin extends sbt.Plugin {
       val aidl = TaskKey[Seq[File]]("gen-aidl", "Generate interface against AIDL file")
       val dx = TaskKey[File]("gen-dx", "Dexing classes into dx")
 
-      def aaptPackageTask(aapt: Executable, manifest: File, res: Directory, assets: Directory, android: Jar, outApk: File): File = {
-        Process(<x>
-          {aapt}
-          package --auto-add-overlay -f
-          -M
-          {manifest}
-          -S
-          {res}
-          -A
-          {assets}
-          -I
-          {android}
-          -F
-          {outApk}
-        </x>).!
 
+      def aaptPackageTask(aaptEx: Executable, manifest: File, res: Directory, assets: Directory, android: Jar, outApk: File, s: TaskStreams): File = {
+        val aapt = Seq(aaptEx.absolutePath, "package", "--auto-add-overlay", "-f",
+          "-M", manifest.absolutePath,
+          "-S", res.absolutePath,
+          "-A", assets.absolutePath,
+          "-I", android.absolutePath,
+          "-F", outApk.absolutePath)
+        s.log.debug("packaging: " + aapt.mkString(" "))
+        if (aapt.run(false).exitValue != 0) sys.error("error packaging resources")
         outApk
       }
 
@@ -143,18 +138,18 @@ object Plugin extends sbt.Plugin {
         }
       }
 
-      def dxTask(scalaInstance: ScalaInstance, dxPath: File, classDirectory: File, classesDexPath: File, l: Logger): File = {
-        val inputs = classDirectory --- scalaInstance.libraryJar get
-        val uptodate = classesDexPath.exists &&
-          !inputs.exists(_.lastModified > classesDexPath.lastModified)
+      def dxTask(scalaInstance: ScalaInstance, dxPath: File, classDirectory: File, cp:Classpath, classesDexPath: File, l: Logger): File = {
+
+        val inputs = classDirectory +++ cp.map(_.data) --- scalaInstance.libraryJar get
+        val uptodate = classesDexPath.exists && !inputs.exists(_.lastModified > classesDexPath.lastModified)
         if (!uptodate) {
-          val dxCmd = String.format("%s  --dex --output=%s %s", dxPath, classesDexPath / "classes.dex", inputs.mkString(" "))
+          val dxCmd = String.format("%s  --dex --core-library --output=%s %s", dxPath, classesDexPath, inputs.mkString(" "))
           l.debug(dxCmd)
           l.info("Dexing " + classesDexPath)
           l.debug(dxCmd !!)
         } else l.debug("dex file uptodate, skipping")
 
-        classesDexPath / "classes.dex"
+        classesDexPath
       }
 
       def apkBuilder(outApkFile: File, res: File, dex: File)(implicit c: Certificate): File = {
@@ -200,16 +195,18 @@ object Plugin extends sbt.Plugin {
             android.task.generateAIDLFile(sDirs, idPath, javaPath, jSource, s.log)
         },
 
-        android.task.dx in android.key in c <<= (scalaInstance, android.sdk.dx in android.Android, classDirectory, target, streams) map {
-          (scalaInstance, dxPath, classDirectory, classesDexPath, s) =>
-            android.task.dxTask(scalaInstance, dxPath, classDirectory, classesDexPath, s.log)
+        android.task.dx in android.key in c <<= (scalaInstance, android.sdk.dx in android.Android, classDirectory, fullClasspath in c,  target, streams) map {
+          (scalaInstance, dxPath, classDirectory, fc, classesDexPath, s) =>
+            android.task.dxTask(scalaInstance, dxPath, classDirectory,fc, classesDexPath / "classes.dex", s.log)
         },
+        android.task.dx in android.key in c <<= android.task.dx in android.key in c dependsOn (compile in c),
+
 
         android.task.resApk in android.key in c <<=
           (android.sdk.aapt in android.Android, android.project.manifest in android.androidHome, android.project.res in android.androidHome,
-            android.project.assets in android.androidHome, android.project.androidJar in android.androidHome, android.project.resApk in android.androidHome) map {
-            (apPath, manPath, rPath, assetPath, jPath, resApkPath) =>
-              android.task.aaptPackageTask(apPath, manPath, rPath, assetPath, jPath, resApkPath)
+            android.project.assets in android.androidHome, android.project.androidJar in android.androidHome, android.project.resApk in android.androidHome, streams) map {
+            (apPath, manPath, rPath, assetPath, jPath, resApkPath, s) =>
+              android.task.aaptPackageTask(apPath, manPath, rPath, assetPath, jPath, resApkPath, s)
           },
 
         android.project.packageApk in android.release.debug in c <<=
@@ -220,8 +217,13 @@ object Plugin extends sbt.Plugin {
 
         //android.project.packageApk in android.key in c <<= android.project.packageApk in android.key in c dependsOn (android.task.dx in android.key in c),
         sourceGenerators in c <+= (android.task.aapt in android.key in c).task,
-        sourceGenerators in c <+= (android.task.aidl in android.key in c).task
+        sourceGenerators in c <+= (android.task.aidl in android.key in c).task,
 
+        android.project.packageApk in android.release.debug in c <<=
+          android.project.packageApk in android.release.debug in c dependsOn(compile in c, android.task.dx in android.key in c),
+
+        android.project.packageApk in c <<= (android.project.packageApk in android.release.debug in c),
+        Keys.`package` in c <<= (android.project.packageApk in c)
       )
 
   )
@@ -239,6 +241,19 @@ object Plugin extends sbt.Plugin {
       android.project.packageName <<= android.project.manifest(AndroidManifest(_).pkg),
       android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-14/android.jar"),
       android.release.debug :=(Path.userHome / ".android" / "debug.keystore", ("androiddebugkey", "android"), "android"),
+
+
+      // disable .jar publishing
+      publishArtifact in(Compile, packageBin) := false,
+
+      // create an Artifact for publishing the .war file
+      artifact in(Compile, android.project.packageApk in android.release.debug) ~= {
+        (art: Artifact) =>
+          art.copy(`type` = "apk", extension = "apk")
+      },
+
+      artifacts <<= (artifact, artifacts)(_ +: _),
+      packagedArtifacts <<= (packagedArtifacts, artifact, android.project.packageApk in android.release.debug) map ((pas, a, file) => pas updated(a, file)),
 
       demo <<= InputTask(parser)(taskDef)
     )
@@ -266,12 +281,10 @@ object Plugin extends sbt.Plugin {
       }
 
 
-    import sbt.complete._
-
-//    val color: Parser[String] = {
-//      (Space ~> "something") | (Space ~> "esle")
-//      List("hello", "world").map((Space) ~> _).reduceLeft(Space)(_.1 | _ .2)
-//    }
+    //    val color: Parser[String] = {
+    //      (Space ~> "something") | (Space ~> "esle")
+    //      List("hello", "world").map((Space) ~> _).reduceLeft(Space)(_.1 | _ .2)
+    //    }
 
     val taskDef = (parsedTask: TaskKey[(String, String)]) => {
       // we are making a task, so use 'map'

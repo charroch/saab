@@ -10,7 +10,7 @@ class AndroidManifest(manifest: scala.xml.Elem) {
     Nil
   }
 
-  lazy val version: (String, Int) = {
+  lazy val version: AndroidManifest.Version = {
     ((manifest \ "@{http://schemas.android.com/apk/res/android}versionName").text,
       (manifest \ "@{http://schemas.android.com/apk/res/android}versionCode").text.toInt)
   }
@@ -44,7 +44,6 @@ class AndroidManifest(manifest: scala.xml.Elem) {
 }
 
 object AndroidManifest {
-  val NS = "http://schemas.android.com/apk/res/android"
-
+  type Version = (String, Int)
   def apply(f: File) = new AndroidManifest(XML.loadFile(f))
 }
