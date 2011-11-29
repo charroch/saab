@@ -87,25 +87,13 @@ object Plugin extends sbt.Plugin {
         outApk
       }
 
-      def generateRFile(pkg: String, aapt: File, manifest: File, resFolder: File, androidJar: File, outFolder: File, log: Logger): Seq[File] = {
+      def generateRFile(pkg: String, aapt: File, manifest: File, resFolder: File, androidJar: File, outFolder: File,  s: TaskStreams): Seq[File] = {
         val out = outFolder / "java"
         if (!out.exists()) out.mkdirs()
-        val process = Process(
-          <x>
-            {aapt.absolutePath}
-            package --auto-add-overlay -m --custom-package
-            {pkg}
-            -M
-            {manifest.absolutePath}
-            -S
-            {resFolder.absolutePath}
-            -I
-            {androidJar.absolutePath}
-            -J
-            {out.absolutePath}
-          </x>
-        )
-        if (process ! log == 1) sys.error("Can not generate R file for command %s" format process.toString)
+
+        val aapt = aapt :: "package" :: "--auto-add-overlay" :: "-m" :: "--custom-package" :: pkg :: "-M" :: manifest.absolutePath :: "-S" :: resFolder.absolutePath :: "-I" :: androidJar.absolutePath :: "-J" :: out.absolutePath :: Nil
+        s.log.debug("packaging: " + aapt.mkString(" "))
+        if (aapt.run(false).exitValue != 0) sys.error("Can not generate R file for command %s" format aapt.toString)
         out ** "R.java" get
       }
 
