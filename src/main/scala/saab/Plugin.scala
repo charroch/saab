@@ -87,13 +87,13 @@ object Plugin extends sbt.Plugin {
         outApk
       }
 
-      def generateRFile(pkg: String, aapt: File, manifest: File, resFolder: File, androidJar: File, outFolder: File,  s: TaskStreams): Seq[File] = {
+      def generateRFile(pkg: String, aapt: File, manifest: File, resFolder: File, androidJar: File, outFolder: File, s: TaskStreams): Seq[File] = {
         val out = outFolder / "java"
         if (!out.exists()) out.mkdirs()
 
-        val aapt = aapt :: "package" :: "--auto-add-overlay" :: "-m" :: "--custom-package" :: pkg :: "-M" :: manifest.absolutePath :: "-S" :: resFolder.absolutePath :: "-I" :: androidJar.absolutePath :: "-J" :: out.absolutePath :: Nil
-        s.log.debug("packaging: " + aapt.mkString(" "))
-        if (aapt.run(false).exitValue != 0) sys.error("Can not generate R file for command %s" format aapt.toString)
+        val aaptP = aapt.absolutePath :: "package" :: "--auto-add-overlay" :: "-m" :: "--custom-package" :: pkg :: "-M" :: manifest.absolutePath :: "-S" :: resFolder.absolutePath :: "-I" :: androidJar.absolutePath :: "-J" :: out.absolutePath :: Nil
+        s.log.debug("packaging: " + aaptP.mkString(" "))
+        if (aaptP.run(false).exitValue != 0) sys.error("Can not generate R file for command %s" format aapt.toString)
         out ** "R.java" get
       }
 
@@ -126,13 +126,13 @@ object Plugin extends sbt.Plugin {
         }
       }
 
-      def dxTask(scalaInstance: ScalaInstance, dxPath: File, classDirectory: File, cp:Classpath, classesDexPath: File, l: Logger): File = {
+      def dxTask(scalaInstance: ScalaInstance, dxPath: File, classDirectory: File, cp: Classpath, classesDexPath: File, l: Logger): File = {
 
         val inputs = classDirectory +++ cp.map(_.data) --- scalaInstance.libraryJar get
         val uptodate = classesDexPath.exists && !inputs.exists(_.lastModified > classesDexPath.lastModified)
         if (!uptodate) {
           val dxCmd = String.format("%s  --dex --core-library --output=%s %s", dxPath, classesDexPath, inputs.mkString(" "))
-          l.debug(dxCmd)
+          l.info(dxCmd)
           l.info("Dexing " + classesDexPath)
           l.debug(dxCmd !!)
         } else l.debug("dex file uptodate, skipping")
@@ -175,7 +175,7 @@ object Plugin extends sbt.Plugin {
         android.task.aapt in android.key in c <<= (android.project.packageName in android.androidHome, android.sdk.aapt in android.Android,
           android.project.manifest in android.androidHome, android.project.res in android.androidHome, android.project.androidJar in android.androidHome, sourceManaged in android.androidHome, streams) map {
           (mPackage, aPath, mPath, resPath, jPath, javaPath, log) =>
-            android.task.generateRFile(mPackage, aPath, mPath, resPath, jPath, javaPath, log.log)
+            android.task.generateRFile(mPackage, aPath, mPath, resPath, jPath, javaPath, log)
         },
 
         android.task.aidl in android.key in c <<= (sourceDirectories, android.sdk.aidl in android.Android, sourceManaged in android.androidHome, javaSource, streams) map {
@@ -183,9 +183,9 @@ object Plugin extends sbt.Plugin {
             android.task.generateAIDLFile(sDirs, idPath, javaPath, jSource, s.log)
         },
 
-        android.task.dx in android.key in c <<= (scalaInstance, android.sdk.dx in android.Android, classDirectory, fullClasspath in c,  target, streams) map {
+        android.task.dx in android.key in c <<= (scalaInstance, android.sdk.dx in android.Android, classDirectory, fullClasspath in c, target, streams) map {
           (scalaInstance, dxPath, classDirectory, fc, classesDexPath, s) =>
-            android.task.dxTask(scalaInstance, dxPath, classDirectory,fc, classesDexPath / "classes.dex", s.log)
+            android.task.dxTask(scalaInstance, dxPath, classDirectory, fc, classesDexPath / "classes.dex", s.log)
         },
         android.task.dx in android.key in c <<= android.task.dx in android.key in c dependsOn (compile in c),
 
@@ -212,11 +212,20 @@ object Plugin extends sbt.Plugin {
 
         android.project.packageApk in c <<= (android.project.packageApk in android.release.debug in c),
         Keys.`package` in c <<= (android.project.packageApk in c)
+
       )
 
   )
 
   lazy val defaultSettings: Seq[Setting[_]] = androidSettingsIn(Compile)
+
+
+  object Robolectric {
+    lazy val settings: Seq[Setting[_]] = Seq(
+      libraryDependencies += "com.pivotallabs" % "robolectric" % "1.0" % "test",
+      libraryDependencies += "com.novocode" % "junit-interface" % "0.7" % "test->default"
+    )
+  }
 
   // Some defaults values common in most project
   object Defaults {
