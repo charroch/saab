@@ -30,4 +30,11 @@ object AndroidKeys {
   // project specific
   val manifestFile = SettingKey[File]("manifest-file", "The AndroidManifest.xml file defined for this project")
   val manifest = SettingKey[AndroidManifest]("manifest", "The AndroidManifest.xml file defined for this project")
+
+  // ADB
+  val deviceManager = SettingKey[DeviceManager]("device-manager", "Managed the lifecycle of all devices - adding listener is done here")
+  val deviceStore = SettingKey[DeviceStore]("device-store", "A map of all attached devices")
+  val deviceFilter = SettingKey[(Device => Boolean)]("device-filter", "Filter for devices to act upon when task are executed")
+  val install = TaskKey[Unit]("install", "Install the APK to the corresponding devices")
+  val instrument = TaskKey[Unit]("instrument", "Install the APK to the corresponding devices")
 }

@@ -220,6 +220,39 @@ object Plugin extends sbt.Plugin {
   lazy val defaultSettings: Seq[Setting[_]] = androidSettingsIn(Compile)
 
 
+  object AdbSettings {
+
+    import AndroidKeys._
+
+    lazy val settings: Seq[Setting[_]] = Seq(
+      deviceManager := new DeviceManager,
+
+      deviceStore <<= deviceManager(new DeviceStore(_)),
+
+      deviceFilter in install := {
+        d: Device =>
+          true
+      },
+
+      install <<= (deviceStore, deviceFilter in install, android.project.packageApk in sbt.IntegrationTest) map {
+        (store, filter, apk) =>
+          store.devices.filter(filter).foreach(_.install(apk))
+      },
+
+      deviceFilter in instrument := {
+        d: Device =>
+          true
+      },
+
+      instrument <<= (deviceStore, deviceFilter in instrument, android.project.packageName in  sbt.IntegrationTest, streams) map {
+        (store, filter, pname, s) =>
+          store.devices.filter(filter).foreach(_.instrument(pname)(s.log))
+      }
+
+    )
+
+  }
+
   object Robolectric {
     lazy val settings: Seq[Setting[_]] = Seq(
       libraryDependencies += "com.pivotallabs" % "robolectric" % "1.0" % "test",
