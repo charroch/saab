@@ -128,7 +128,8 @@ object Plugin extends sbt.Plugin {
 
       def dxTask(scalaInstance: ScalaInstance, dxPath: File, classDirectory: File, cp: Classpath, classesDexPath: File, l: Logger): File = {
 
-        val inputs = classDirectory +++ cp.map(_.data) --- scalaInstance.libraryJar get
+        val inputs = classDirectory +++ cp.map(_.data) --- new File("/opt/android-sdk-linux_x86/platforms/android-14/android.jar") --- scalaInstance.libraryJar get
+
         val uptodate = classesDexPath.exists && !inputs.exists(_.lastModified > classesDexPath.lastModified)
         if (!uptodate) {
           val dxCmd = String.format("%s  --dex --core-library --output=%s %s", dxPath, classesDexPath, inputs.mkString(" "))
@@ -244,7 +245,7 @@ object Plugin extends sbt.Plugin {
           true
       },
 
-      instrument <<= (deviceStore, deviceFilter in instrument, android.project.packageName in  sbt.IntegrationTest, streams) map {
+      instrument <<= (deviceStore, deviceFilter in instrument, android.project.packageName in sbt.IntegrationTest, streams) map {
         (store, filter, pname, s) =>
           store.devices.filter(filter).foreach(_.instrument(pname)(s.log))
       }
@@ -262,6 +263,7 @@ object Plugin extends sbt.Plugin {
 
   // Some defaults values common in most project
   object Defaults {
+
     lazy val settings: Seq[Setting[_]] = Seq(
       android.project.manifest <<= sourceDirectory(_ / "AndroidManifest.xml"),
       android.project.res <<= sourceDirectory(_ / "res"),
@@ -269,7 +271,7 @@ object Plugin extends sbt.Plugin {
       android.project.resApk <<= target(_ / "resources.apk"),
       android.project.apk <<= target(_ / "out.apk"),
       android.project.packageName <<= android.project.manifest(AndroidManifest(_).pkg),
-      android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-14/android.jar"),
+      android.project.androidJar := file("/opt/android-sdk-linux_x86/platforms/android-10/android.jar"),
       android.release.debug :=(Path.userHome / ".android" / "debug.keystore", ("androiddebugkey", "android"), "android"),
 
 
